@@ -41,3 +41,16 @@ class TinvestAPI:
                 f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
+
+    # Получение списка всех акций
+    async def tinExchangeShares(self):
+        try:
+            async with AsyncClient(self.token,
+                                   target=INVEST_GRPC_API_SANDBOX) as client:
+                exchange_shares_array = await client.instruments.shares()
+                return exchange_shares_array.instruments
+        except Exception as e:
+            print(
+                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
