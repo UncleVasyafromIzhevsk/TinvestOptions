@@ -54,3 +54,16 @@ class TinvestAPI:
                 f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
+
+    # Получение всех валют
+    async def tinGetCurr(self):
+        try:
+            async with AsyncClient(self.token,
+                                   target=INVEST_GRPC_API_SANDBOX) as client:
+                exchange_currency_array = await client.instruments.currencies()
+                return exchange_currency_array.instruments
+        except Exception as e:
+            print(
+                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
