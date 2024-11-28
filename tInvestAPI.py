@@ -22,7 +22,7 @@ class TinvestAPI:
         self.token = token
 
     # Пеобразование тин-чисел в флоат
-    def format_T_num_in_float(self, units, nano):
+    def tinNumberConnector(self, units, nano):
         if nano < 0:
             nano = abs(nano)
         if nano == 0:
@@ -30,7 +30,7 @@ class TinvestAPI:
         return units + nano * 10**-(floor(log10(nano))+1)
 
     # Получение всех опционов
-    async def show_options(self):
+    async def tinGetOptionsAll(self):
         try:
             async with AsyncClient(self.token,
                                    target=INVEST_GRPC_API_SANDBOX) as client:
@@ -43,7 +43,7 @@ class TinvestAPI:
             return None
 
     # Получение списка всех акций
-    async def tinExchangeShares(self):
+    async def tinGetSharesAll(self):
         try:
             async with AsyncClient(self.token,
                                    target=INVEST_GRPC_API_SANDBOX) as client:
@@ -56,12 +56,27 @@ class TinvestAPI:
             return None
 
     # Получение всех валют
-    async def tinGetCurr(self):
+    async def tinGetCurrencyAll(self):
         try:
             async with AsyncClient(self.token,
                                    target=INVEST_GRPC_API_SANDBOX) as client:
                 exchange_currency_array = await client.instruments.currencies()
                 return exchange_currency_array.instruments
+        except Exception as e:
+            print(
+                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
+
+    # Получение последней цены по инструменту
+    async def tinGetLastPrice(self, figi='FIGI', instrument_id="UID"):
+        try:
+            async with AsyncClient(self.token,
+                                   target=INVEST_GRPC_API_SANDBOX) as client:
+                last_prices_array = await client.market_data.get_last_prices(
+                    figi={figi}, instrument_id={instrument_id}
+                )
+                return last_prices_array.last_prices
         except Exception as e:
             print(
                 f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
