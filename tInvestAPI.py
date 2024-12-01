@@ -23,11 +23,17 @@ class TinvestAPI:
 
     # Пеобразование тин-чисел в флоат
     def tinNumberConnector(self, units, nano):
-        if nano < 0:
-            nano = abs(nano)
-        if nano == 0:
-            return float(units)
-        return units + nano * 10**-(floor(log10(nano))+1)
+        try:
+            if nano < 0:
+                nano = abs(nano)
+            if nano == 0:
+                return float(units)
+            return units + nano * 10**-(floor(log10(nano))+1)
+        except Exception as e:
+            print(
+                f"Падение в  'tinNumberConnector'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
 
     # Получение всех опционов
     async def tinGetOptionsAll(self):
@@ -38,7 +44,7 @@ class TinvestAPI:
                 return all_options
         except Exception as e:
             print(
-                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+                f"Падение в  'tinGetOptionsAll'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
 
@@ -51,7 +57,7 @@ class TinvestAPI:
                 return exchange_shares_array.instruments
         except Exception as e:
             print(
-                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+                f"Падение в  'tinGetSharesAll'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
 
@@ -64,7 +70,7 @@ class TinvestAPI:
                 return exchange_currency_array.instruments
         except Exception as e:
             print(
-                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+                f"Падение в  'tinGetCurrencyAll'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
 
@@ -79,6 +85,47 @@ class TinvestAPI:
                 return last_prices_array.last_prices
         except Exception as e:
             print(
-                f"Тип исключения: {type(e).__name__}, сообщение: {str(e)}"
+                f"Падение в  'tinGetLastPrice'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
+
+    # Запрос истории свечей
+    async def tinGetHistoryCandles(self, period, figi='FIGI', instrument_id='UID', slot='interval'):
+        """
+        FIGI - figi инструмента,
+        UID - uid инструмента,
+        slot - интервал, для унификации передаетсяя как значение из словаря,
+        period - глубина запроса исторических свечей, для унификации задается в часах.
+        """
+        dict_slot = {
+            '1_MIN': CandleInterval.CANDLE_INTERVAL_1_MIN,
+            '5_MIN': CandleInterval.CANDLE_INTERVAL_5_MIN,
+            '15_MIN': CandleInterval.CANDLE_INTERVAL_15_MIN,
+            '1_HOUR': CandleInterval.CANDLE_INTERVAL_HOUR,
+            '1_DAY': CandleInterval.CANDLE_INTERVAL_DAY,
+            '2_MIN': CandleInterval.CANDLE_INTERVAL_2_MIN,
+            '3_MIN': CandleInterval.CANDLE_INTERVAL_3_MIN,
+            '10_MIN': CandleInterval.CANDLE_INTERVAL_10_MIN,
+            '30_MIN': CandleInterval.CANDLE_INTERVAL_30_MIN,
+            '2_HOUR': CandleInterval.CANDLE_INTERVAL_2_HOUR,
+            '4_HOUR': CandleInterval.CANDLE_INTERVAL_4_HOUR,
+            'WEEK': CandleInterval.CANDLE_INTERVAL_WEEK,
+            'MONTH': CandleInterval.CANDLE_INTERVAL_MONTH,
+        }
+        try:
+            async with AsyncClient(self.token,
+                                   target=INVEST_GRPC_API_SANDBOX) as client:
+                historical_candles = await client.market_data.get_candles(
+                    figi=figi,
+                    from_=now() - timedelta(hours=period),
+                    to=now(),
+                    interval=dict_slot[slot],
+                    instrument_id=instrument_id,
+                    candle_source_type=CandleSource.CANDLE_SOURCE_UNSPECIFIED
+                )
+                return historical_candles.candles
+        except Exception as e:
+            print(
+                f"Падение в  'tinGetHistoryCandles'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
