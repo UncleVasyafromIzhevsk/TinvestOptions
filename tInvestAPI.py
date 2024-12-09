@@ -129,3 +129,18 @@ class TinvestAPI:
                 f"Падение в  'tinGetHistoryCandles'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
             )
             return None
+
+    # Получение стакана по инструменту
+    async def tinGetOrderBook(self, depth, figi='FIGI', instrument_id="UID"):
+        try:
+            async with AsyncClient(self.token,
+                                   target=INVEST_GRPC_API_SANDBOX) as client:
+                order_book = await client.market_data.get_order_book(
+                    figi=figi, instrument_id=instrument_id, depth=depth
+                )
+                return order_book
+        except Exception as e:
+            print(
+                f"Падение в  'tinGetOrderBook'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
+            )
+            return None
