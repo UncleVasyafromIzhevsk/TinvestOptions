@@ -41,7 +41,7 @@ class TinvestAPI:
             async with AsyncClient(self.token,
                                    target=INVEST_GRPC_API_SANDBOX) as client:
                 all_options = await client.instruments.options()
-                return all_options
+                return all_options.instruments
         except Exception as e:
             print(
                 f"Падение в  'tinGetOptionsAll'\nТип исключения: {type(e).__name__}, сообщение: {str(e)}"
