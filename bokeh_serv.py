@@ -21,7 +21,7 @@ from tInvestAPI import TinvestAPI
 # Токен санбокс т-инвестиции
 load_dotenv()
 TOKEN_TIN_SanBox = os.getenv("TOKEN_TIN_SanBox")
-# Создание объекта для методо тинвест
+# Создание объекта для методов тинвест
 tin = TinvestAPI(TOKEN_TIN_SanBox)
 
 doc = curdoc()
@@ -35,19 +35,27 @@ async def updateBD():
     # В отдельно добавленых тикерах глобалим 
     global df_all_options
     global df_all_share_curr
-    print('Начинаю загрузку данных')
+    print('Начинаю загрузку данных по опционам...')
     # Получение всех опционов и запись их в фрейм
     df_all_options = pd.DataFrame((await tin.tinGetOptionsAll()))
-    print('Загрузил опционы')
+    # Фильтруем по дате(сегодня и на месяц вперед)
+    df_all_options = df_all_options[(
+        (df_all_options.expiration_date >= pd.to_datetime('today', utc=True))
+        & (
+            df_all_options.expiration_date <= pd.to_datetime('today', utc=True) + pd.to_timedelta(
+                '32 days')
+        )
+    )]
+    print('Загрузил опционы!')
+    print('Начинаю загрузку данных по БА...')
     # Получение всех акций и валют и запись их в объединеный фрейм
     df_all_share_curr = pd.concat(
         [(pd.DataFrame(await tin.tinGetSharesAll())), pd.DataFrame(await tin.tinGetCurrencyAll())]
     )
-    print('Загрузил акции')
-    # print(df_all_share_curr.name) 
-    source_BA_with_OPT = ColumnDataSource(
-        df_all_share_curr[df_all_share_curr.ticker.isin(set(df_all_options['basic_asset']))]
-    )
+    # Фильтруем по наличаю опционов по позиционному uid
+    df_all_share_curr = df_all_share_curr[df_all_share_curr.ticker.isin(set(df_all_options['basic_asset']))]
+    print('Загрузил БА!')
+    source_BA_with_OPT = ColumnDataSource(df_all_share_curr)
     columns_BA_with_OPT = [
         TableColumn(field='name', title="Название",),
         TableColumn(field='ticker', title="Тикер"),
@@ -55,10 +63,9 @@ async def updateBD():
     ]
     table_BA_with_OPT.source = source_BA_with_OPT
     table_BA_with_OPT.columns = columns_BA_with_OPT
-    select_BA.options=list(source_BA_with_OPT.data['name'])
+    select_BA.options=list(df_all_share_curr.name)
     print('Всё ок!')
    
-
 
 # Доп функции для обновления данных в виджетах***********************************************
 # Обновление данных в таблице выбранной БА
@@ -305,9 +312,6 @@ title_table_all_BA = Div(
 table_BA_with_OPT = DataTable(
     width_policy = 'max', index_header = '№', 
 )
-
-
-
 # Титл элементов выбора
 title_selection_items = Div(
         text=(
@@ -323,8 +327,8 @@ select_BA = Select(
 date_OPT_ex = DatePicker(
         title="Выберите дату исполнения опционов",
         value=str(pd.to_datetime('today', utc=True)),
-        min_date=str(pd.to_datetime('today', utc=True) - pd.to_timedelta('365 days')),
-        max_date=str(pd.to_datetime('today', utc=True) + pd.to_timedelta('365 days')),
+        min_date=str(pd.to_datetime('today', utc=True) - pd.to_timedelta('2 days')),
+        max_date=str(pd.to_datetime('today', utc=True) + pd.to_timedelta('36 days')),
         sizing_mode='stretch_width'
 )
 # Титл таблицы выбранного БА
