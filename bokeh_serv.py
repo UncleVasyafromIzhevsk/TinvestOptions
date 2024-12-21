@@ -71,7 +71,7 @@ async def updateBD():
 # Обновление данных в таблице выбранной БА
 async def updateTableSelectedBA(name_BA):
     df_for_selected_BA = pd.DataFrame(
-        columns=['Название', 'Тикер', 'Цена за акцию', 'Лотность', 'Цена за лот']
+        columns=['Название', 'Тикер', 'Цена за акцию', 'Лотность', 'Цена за лот', 'figi', 'uid']
     )
     for i in (df_all_share_curr[df_all_share_curr.name == name_BA]).iterrows():
         price_tin = await tin.tinGetLastPrice(figi=i[1].figi, instrument_id=i[1].uid)
@@ -81,7 +81,7 @@ async def updateTableSelectedBA(name_BA):
             price = tin.tinNumberConnector(price_tin[0].price.units, price_tin[0].price.nano)
             price_lot = price * i[1].lot
         df_for_selected_BA.loc[i[1].uid] = [
-            i[1]['name'], i[1].ticker, price, i[1].lot, price_lot
+            i[1]['name'], i[1].ticker, price, i[1].lot, price_lot, i[1].figi, i[1].uid
         ]
         source_selected_BA = ColumnDataSource(df_for_selected_BA)
         columns_selected_BA = [
