@@ -220,11 +220,25 @@ async def updateTableSelectedOPT(name_OPT, date_Ex):
     else:
         df_for_OPT_select.loc['Стоимость премии опциона за лот'] = ['н/д']
     df_for_OPT_select.loc['Количество предложений(по стакану)'] = [quantity]
+    df_for_OPT_select.loc['Дата исполнения опциона'] = [i[1].expiration_date]
     source_OPT_select = ColumnDataSource(df_for_OPT_select)
     columns_OPT_select = [
         TableColumn(field='index', title="Свойство",),
-        TableColumn(field='Данные', title="Данные"),
+        TableColumn(field='Данные', title="Данные",),
     ]
+    # Активация кнопкок построения графиков CALL и PUT опциона
+    if btn_plotting_BA.disabled:
+        if 'н/д' not in [price, quantity, price_BA]:
+            if direction == 2:
+                btn_plotting_CALL.disabled = False
+                # Активация кнопки PUTvsCALL
+                if not btn_plotting_PUT.disabled:
+                    btn_plotting_PUTvsCALL.disabled = False              
+            elif direction == 1:
+                btn_plotting_PUT.disabled = False
+                # Активация кнопки PUTvsCALL
+                if not btn_plotting_CALL.disabled:
+                    btn_plotting_PUTvsCALL.disabled = False        
     return [source_OPT_select, columns_OPT_select]
 # Обновление данных графикова БА
 async def updatePlottingBA():
@@ -280,12 +294,16 @@ async def coroutinSelectBA(name):
     table_CALL_select.columns = [TableColumn(field='nos', title="a",)]
     table_PUT_select.source = ColumnDataSource(dict(nos = ['Список опционов обновлен!']))
     table_PUT_select.columns = [TableColumn(field='nos', title="a",)]
-    # Активируем кнопку и придаем название кнопке построения графика БА и обнуляем
+    # Активируем кнопку для построения графика БА и обнуляем данные этого графика
     plot_BA.data_source = ColumnDataSource({})
     btn_plotting_BA.disabled = False
-    btn_plotting_BA.label = (
-        f'Построить график для Базового Актива - "{name}"'
-    )
+    # Обнуляем данные графиков опционов и деактивируем их кнопки
+    plot_CALL.data_source = ColumnDataSource({})
+    plot_PUT.data_source = ColumnDataSource({})
+    plot_PUTvsCALL.data_source = ColumnDataSource({})
+    btn_plotting_PUT.disabled = True
+    btn_plotting_CALL.disabled = True
+    btn_plotting_PUTvsCALL.disabled = True
 # Выбора даты испонения опциона
 async def coroutinDateOptEx(date_Ex):
     # Обновление таблицы CALL опционов выбранного БА на выбранную дату
@@ -337,6 +355,82 @@ async def coroutinBtnPlottingBA():
     plot.title.text = source_plot_BA[1]
     # Деактивируем кнопку построения графика БА до выбора следующего БА
     btn_plotting_BA.disabled = True
+# Кнопки построения графиков опционов
+async def coroutinBtnPlottingOPT(type_OPT):
+    if type_OPT == 'CALL':
+        plot_PUTvsCALL.data_source = ColumnDataSource({})
+        plot_CALL.data_source = ColumnDataSource(
+            dict(
+                x = [
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    table_CALL_select.source.data['Данные'][10],
+                    table_CALL_select.source.data['Данные'][10],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                ],
+                y = [
+                    table_CALL_select.source.data['Данные'][3],
+                    table_CALL_select.source.data['Данные'][2],
+                    table_CALL_select.source.data['Данные'][2],
+                    table_CALL_select.source.data['Данные'][3],
+                    table_CALL_select.source.data['Данные'][3],
+                ],
+                volume = [
+                    select_CALL.value, select_CALL.value, select_CALL.value, select_CALL.value,
+                    select_CALL.value
+                ],
+            )
+        )
+        plot.line(source=ColumnDataSource())
+    elif type_OPT == 'PUT':
+        plot_PUTvsCALL.data_source = ColumnDataSource({})
+        plot_PUT.data_source = ColumnDataSource(
+            dict(
+                x = [
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    table_PUT_select.source.data['Данные'][10],
+                    table_PUT_select.source.data['Данные'][10],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                ],
+                y = [
+                    table_PUT_select.source.data['Данные'][2],
+                    table_PUT_select.source.data['Данные'][3],
+                    table_PUT_select.source.data['Данные'][3],
+                    table_PUT_select.source.data['Данные'][2],
+                    table_PUT_select.source.data['Данные'][2],
+                ],
+                volume = [
+                    select_PUT.value, select_PUT.value, select_PUT.value, select_PUT.value,
+                    select_PUT.value
+                ],
+            )
+        )
+        plot.line(source=ColumnDataSource())
+    elif type_OPT == 'PUTvsCALL':
+        volic = (f'{select_PUT.value} vs {select_CALL.value}')
+        plot_PUT.data_source = ColumnDataSource({})
+        plot_CALL.data_source = ColumnDataSource({})
+        plot_PUTvsCALL.data_source = ColumnDataSource(
+            dict(
+                x = [
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                    table_CALL_select.source.data['Данные'][10],
+                    table_CALL_select.source.data['Данные'][10],
+                    plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
+                ],
+                y = [
+                    (table_PUT_select.source.data['Данные'][2] - table_CALL_select.source.data['Данные'][0]),
+                    (table_CALL_select.source.data['Данные'][2] + table_PUT_select.source.data['Данные'][0]),
+                    (table_CALL_select.source.data['Данные'][2] + table_PUT_select.source.data['Данные'][0]),
+                    (table_PUT_select.source.data['Данные'][2] - table_CALL_select.source.data['Данные'][0]),
+                    (table_PUT_select.source.data['Данные'][2] - table_CALL_select.source.data['Данные'][0]),
+                ],
+                volume = [volic, volic, volic, volic, volic]
+                 )
+        )
+        plot.line(source=ColumnDataSource())
 
 # Виджеты****************************************************************************************
 # Название таблицы с опционами по которым есть опционы
@@ -414,12 +508,22 @@ table_CALL_select = DataTable(
 table_PUT_select = DataTable(
      sizing_mode='stretch_width', index_position = None, header_row = False, height = 250
 )
-# Кнопка для построения графика БА
+# Кнопки построения графиков
 btn_plotting_BA = Button(
-    label='Базовый Актив не выбран!',
-    button_type="success",
-    disabled = True,
-    sizing_mode="stretch_width"
+    label='График БА', button_type="success", sizing_mode="stretch_width", disabled=True
+)
+btn_plotting_CALL = Button(
+    label='График CALL', button_type="success", sizing_mode="stretch_width", disabled=True
+)
+btn_plotting_PUT = Button(
+    label='График PUT', button_type="success", sizing_mode="stretch_width", disabled=True
+)
+btn_plotting_PUTvsCALL = Button(
+    label='График PUTvsCALL', button_type="success", sizing_mode="stretch_width", disabled=True
+)
+# Кнопка сохранения данных по выстановленному опциону
+btn_plotting_SAVE = Button(
+    label='Сохраниить', button_type="success", sizing_mode="stretch_width", disabled=True
 )
 # Поле графика
 # Панель инструментов
@@ -443,7 +547,13 @@ plot = figure(
     title = 'Базовый Актив не выбран!'
 )
 # Экземпляр линейного графика для БА
-plot_BA = plot.line(color="blue", line_width=4,)
+plot_BA = plot.line(color="yellow", line_width=4,)
+# Экземпляр графика CALL опциона
+plot_CALL = plot.line(color='green', alpha=0.8, width=2)
+# Экземпляр графика PUT опциона
+plot_PUT = plot.line(color='red', alpha=0.8, width=2)
+# Экземпляр графика PUTvsCALL опциона
+plot_PUTvsCALL = plot.line(color='blue', alpha=0.8, width=2)
 
 # Коллбэки****************************************************************************************
 # Селекта выбора БА
@@ -482,6 +592,15 @@ def callbackSelectPUT(attr, old, new):
 # Кнопки построения графика БА
 def callbackBtnPlottingBA():
         doc.add_next_tick_callback(partial(coroutinBtnPlottingBA))
+# Кнопки построения графика CALL опциона
+def callbackBtnPlottingCALL():
+    doc.add_next_tick_callback(partial(coroutinBtnPlottingOPT, type_OPT = 'CALL'))
+# Кнопки построения графика PUT опциона
+def callbackBtnPlottingPUT():
+    doc.add_next_tick_callback(partial(coroutinBtnPlottingOPT, type_OPT = 'PUT'))
+# Кнопки построения графика PUTvsCALL опционов
+def callbackBtnPlottingPUTvsCALL():
+    doc.add_next_tick_callback(partial(coroutinBtnPlottingOPT, type_OPT = 'PUTvsCALL'))
 
 # Обработчики событий**************************************************************************
 # Селекта выбора БА
@@ -492,8 +611,14 @@ date_OPT_ex.on_change("value", callbackDateOptEx)
 select_CALL.on_change("value", callbackSelectCALL)
 # Выбора PUT опциона
 select_PUT.on_change("value", callbackSelectPUT)
-# Кнопки построения графика БА
+# Кнопка построения графика БА
 btn_plotting_BA.on_click(callbackBtnPlottingBA)
+# Кнопка построения графика CALL опциона
+btn_plotting_CALL.on_click(callbackBtnPlottingCALL)
+# Кнопка построения графика PUT опциона
+btn_plotting_PUT.on_click(callbackBtnPlottingPUT)
+# Кнопка построения графика PUTvsCALL опционов
+btn_plotting_PUTvsCALL.on_click(callbackBtnPlottingPUTvsCALL)
 
 # Собираем виджеты в корневище*************************************************************
 layout = column(
@@ -503,7 +628,11 @@ layout = column(
     title_selected_BA_PUT, table_selected_BA_PUT, title_selection_OPTs,
     row(select_CALL, select_PUT, sizing_mode='stretch_width'),
     row(table_CALL_select, table_PUT_select, sizing_mode='stretch_width'),
-    btn_plotting_BA, plot,
+    row(
+        btn_plotting_BA, btn_plotting_CALL, btn_plotting_PUT,
+        btn_plotting_PUTvsCALL, btn_plotting_SAVE, sizing_mode="stretch_width"
+    ),
+    plot,
     sizing_mode='stretch_width'
 )
 
