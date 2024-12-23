@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 from bokeh.io import show, curdoc
 from bokeh.models import (
 AutocompleteInput, Select, ColumnDataSource, DataTable, DateFormatter, TableColumn,
-Div, DatePicker
+Div, DatePicker, HoverTool, Button
 )
+from bokeh.events import ButtonClick
 from bokeh.layouts import column, row
 from bokeh.document import without_document_lock
 from bokeh.plotting import figure, curdoc
@@ -65,9 +66,8 @@ async def updateBD():
     table_BA_with_OPT.columns = columns_BA_with_OPT
     select_BA.options=list(df_all_share_curr.name)
     print('Всё ок!')
-   
-
-# Доп функции для обновления данных в виджетах***********************************************
+    
+# Доп функции для обновления данных в виджетах*********************************************
 # Обновление данных в таблице выбранной БА
 async def updateTableSelectedBA(name_BA):
     df_for_selected_BA = pd.DataFrame(
@@ -226,8 +226,27 @@ async def updateTableSelectedOPT(name_OPT, date_Ex):
         TableColumn(field='Данные', title="Данные"),
     ]
     return [source_OPT_select, columns_OPT_select]
+# Обновление данных графикова БА
+async def updatePlottingBA():
+    # Получение исторических свечей по БА
+    candles = await tin.tinGetHistoryCandles(
+        8760, figi=table_selected_BA.source.data['figi'][0],
+        instrument_id=table_selected_BA.source.data['uid'][0],
+        slot='1_DAY'
+    )
+    # Данные для графика БА
+    source_plot_BA = ColumnDataSource(
+        dict(
+            x = [x.time for x in candles],
+            y = [tin.tinNumberConnector(x.close.units, x.close.nano) for x in candles],
+            volume = [x.volume for x in candles],   
+        )
+    )
+    # Название для графика
+    name_plot = table_selected_BA.source.data['Название'][0]
+    return [source_plot_BA, name_plot]
 
-# Корутины для вызова*****************************************************************************
+# Корутины для вызова***************************************************************************
 # Селекта выбора БА
 async def coroutinSelectBA(name):
     # Обновление титла над таблицей БА
@@ -261,6 +280,12 @@ async def coroutinSelectBA(name):
     table_CALL_select.columns = [TableColumn(field='nos', title="a",)]
     table_PUT_select.source = ColumnDataSource(dict(nos = ['Список опционов обновлен!']))
     table_PUT_select.columns = [TableColumn(field='nos', title="a",)]
+    # Активируем кнопку и придаем название кнопке построения графика БА и обнуляем
+    plot_BA.data_source = ColumnDataSource({})
+    btn_plotting_BA.disabled = False
+    btn_plotting_BA.label = (
+        f'Построить график для Базового Актива - "{name}"'
+    )
 # Выбора даты испонения опциона
 async def coroutinDateOptEx(date_Ex):
     # Обновление таблицы CALL опционов выбранного БА на выбранную дату
@@ -300,8 +325,20 @@ async def coroutinSelectPUT(name):
     data_table_PUT_select = await updateTableSelectedOPT(name, date_OPT_ex.value)
     table_PUT_select.source = data_table_PUT_select[0]
     table_PUT_select.columns = data_table_PUT_select[1]
+# Кнопка построения графика БА
+async def coroutinBtnPlottingBA():
+    # Получение данных для графика
+    source_plot_BA = await updatePlottingBA()
+    # Обновление и построение графика БА
+    plot_BA.data_source=source_plot_BA[0]
+    # Добавляем чтоб в ховер подтягивались данные
+    plot.line(source=ColumnDataSource())
+    # Изменение названия
+    plot.title.text = source_plot_BA[1]
+    # Деактивируем кнопку построения графика БА до выбора следующего БА
+    btn_plotting_BA.disabled = True
 
-# Виджеты*******************************************************************************************
+# Виджеты****************************************************************************************
 # Название таблицы с опционами по которым есть опционы
 title_table_all_BA = Div(
     text=(
@@ -365,7 +402,9 @@ title_selection_OPTs = Div(
     text=f'<blockquote><h2>Выбор опционов<hr>', sizing_mode='stretch_width', margin = (3, 0, 3, 0)
 )
 # Селекты для выбора опционов
-select_CALL = Select(title="Выберите CALL опцион", sizing_mode='stretch_width', disabled = True)
+select_CALL = Select(
+    title="Выберите CALL опцион", sizing_mode='stretch_width', disabled = True
+)
 select_PUT = Select(title="Выберите PUT опцион", sizing_mode='stretch_width', disabled = True)
 # Таблица с данными CALL опциона
 table_CALL_select = DataTable(
@@ -375,8 +414,38 @@ table_CALL_select = DataTable(
 table_PUT_select = DataTable(
      sizing_mode='stretch_width', index_position = None, header_row = False, height = 250
 )
+# Кнопка для построения графика БА
+btn_plotting_BA = Button(
+    label='Базовый Актив не выбран!',
+    button_type="success",
+    disabled = True,
+    sizing_mode="stretch_width"
+)
+# Поле графика
+# Панель инструментов
+TOOLS = "pan,wheel_zoom,box_zoom,reset, crosshair"
+# Данные для изображения в hover
+data_in_hover = HoverTool(
+    tooltips=[
+        ( 'Дата',   '@x{%F}'),
+        ( 'Цена',  '@y{%0.2f} руб' ),
+        ('Объём', '@volume')
+    ],
+    formatters={
+        '@x': 'datetime',
+        '@y': 'printf',
+        '@volume': 'printf',
+    },
+)
+# Виджет графика
+plot = figure(
+    x_axis_type="datetime", sizing_mode="stretch_width", tools=[data_in_hover, TOOLS],
+    title = 'Базовый Актив не выбран!'
+)
+# Экземпляр линейного графика для БА
+plot_BA = plot.line(color="blue", line_width=4,)
 
-# Коллбэки******************************************************************************************
+# Коллбэки****************************************************************************************
 # Селекта выбора БА
 def callbackSelectBA(attr, old, new):
     # Уведомление по обновлению данных выбранного БА
@@ -410,8 +479,11 @@ def callbackSelectCALL(attr, old, new):
 # Выбора PUT опциона
 def callbackSelectPUT(attr, old, new):
     doc.add_next_tick_callback(partial(coroutinSelectPUT, name=new))
+# Кнопки построения графика БА
+def callbackBtnPlottingBA():
+        doc.add_next_tick_callback(partial(coroutinBtnPlottingBA))
 
-# Обработчики событий****************************************************************************
+# Обработчики событий**************************************************************************
 # Селекта выбора БА
 select_BA.on_change("value", callbackSelectBA)
 # Выбора даты исполнения опциона
@@ -420,14 +492,18 @@ date_OPT_ex.on_change("value", callbackDateOptEx)
 select_CALL.on_change("value", callbackSelectCALL)
 # Выбора PUT опциона
 select_PUT.on_change("value", callbackSelectPUT)
+# Кнопки построения графика БА
+btn_plotting_BA.on_click(callbackBtnPlottingBA)
 
-# Собираем виджеты в корневище*****************************************************************
+# Собираем виджеты в корневище*************************************************************
 layout = column(
-    title_table_all_BA, table_BA_with_OPT, row(select_BA, date_OPT_ex, sizing_mode='stretch_width'),
+    title_table_all_BA, table_BA_with_OPT,
+    row(select_BA, date_OPT_ex, sizing_mode='stretch_width'),
     title_selected_BA, table_selected_BA, title_selected_BA_CALL, table_selected_BA_CALL,
     title_selected_BA_PUT, table_selected_BA_PUT, title_selection_OPTs,
     row(select_CALL, select_PUT, sizing_mode='stretch_width'),
     row(table_CALL_select, table_PUT_select, sizing_mode='stretch_width'),
+    btn_plotting_BA, plot,
     sizing_mode='stretch_width'
 )
 
