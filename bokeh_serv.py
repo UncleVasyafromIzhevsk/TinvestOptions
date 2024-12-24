@@ -31,6 +31,10 @@ doc.theme = 'dark_minimal'
 
 df_all_options = pd.DataFrame()
 df_all_share_curr = pd.DataFrame()
+print('Запись истории опционов в темп')
+df_history_opt = pd.read_csv('history_OPT')
+df_history_opt.to_csv('history_OPT_temp', index=False)
+print('Ок!')
 
 async def updateBD():
     # В отдельно добавленых тикерах глобалим 
@@ -94,82 +98,87 @@ async def updateTableSelectedBA(name_BA):
         return [source_selected_BA, columns_selected_BA]
 # Обновление данных в таблицах опционов на выбранную дату
 async def updateTableAllOptDate(name_BA, date_Ex, direction):
-    df_table_all_opt_date= pd.DataFrame(
-        columns=[
-            'Страйк', 'Премия', 'Цена БА', 'Опц. на деньгах', 'Откат премии'
-        ]
-    )
-    # Фильтруем опционы по имени БА, дате исполнения и напрвлению
-    for i in (
-        df_all_options[
-        (
-            df_all_options.basic_asset_position_uid == (
-                df_all_share_curr[df_all_share_curr.name == name_BA].position_uid.values[0]
-            )
+    # Исключаем ошбку, когда не выбран БА
+    try:
+        df_table_all_opt_date= pd.DataFrame(
+            columns=[
+                'Страйк', 'Премия', 'Цена БА', 'Опц. на деньгах', 'Откат премии'
+            ]
         )
-        & (df_all_options.expiration_date == date_Ex) & (df_all_options.direction == direction)
-        ]
-    ).iterrows():
-        strike = tin.tinNumberConnector(i[1].strike_price['units'], i[1].strike_price['nano'])
-        ba_size = tin.tinNumberConnector(i[1].basic_asset_size['units'], i[1].basic_asset_size['nano'])
-        price_BA = table_selected_BA.source.data['Цена за акцию'][0]
-        price = 'н/д'
-        quantity = 'н/д'
-        money_option = 'н/д'
-        bonus_rollback = 'н/д'
-        order_book = await tin.tinGetOrderBook(depth=1, figi=i[1].uid, instrument_id=i[1].uid)
-        if order_book != None:
-            # Получение верхней цены в стакане опциона и количество предложений
-            if order_book.asks:
-                price = tin.tinNumberConnector(
-                    order_book.asks[0].price.units, order_book.asks[0].price.nano
+        # Фильтруем опционы по имени БА, дате исполнения и напрвлению
+        for i in (
+            df_all_options[
+            (
+                df_all_options.basic_asset_position_uid == (
+                    df_all_share_curr[df_all_share_curr.name == name_BA].position_uid.values[0]
                 )
-                quantity = order_book.asks[0].quantity
-                # Расчет "опциона на деньгах" и "отката премии"
-                if direction == 2:
-                    money_option = strike + price
-                    bonus_rollback = price_BA - price
-                else:
-                    money_option = strike - price
-                    bonus_rollback = price_BA + price
-        df_table_all_opt_date.loc[i[1]['name']] = [
-            strike, price, price_BA, money_option, bonus_rollback
+            )
+            & (df_all_options.expiration_date == date_Ex) & (df_all_options.direction == direction)
+            ]
+        ).iterrows():
+            strike = tin.tinNumberConnector(i[1].strike_price['units'], i[1].strike_price['nano'])
+            ba_size = tin.tinNumberConnector(i[1].basic_asset_size['units'], i[1].basic_asset_size['nano'])
+            price_BA = table_selected_BA.source.data['Цена за акцию'][0]
+            price = 'н/д'
+            quantity = 'н/д'
+            money_option = 'н/д'
+            bonus_rollback = 'н/д'
+            order_book = await tin.tinGetOrderBook(depth=1, figi=i[1].uid, instrument_id=i[1].uid)
+            if order_book != None:
+                # Получение верхней цены в стакане опциона и количество предложений
+                if order_book.asks:
+                    price = tin.tinNumberConnector(
+                        order_book.asks[0].price.units, order_book.asks[0].price.nano
+                    )
+                    quantity = order_book.asks[0].quantity
+                    # Расчет "опциона на деньгах" и "отката премии"
+                    if direction == 2:
+                        money_option = strike + price
+                        bonus_rollback = price_BA - price
+                    else:
+                        money_option = strike - price
+                        bonus_rollback = price_BA + price
+            df_table_all_opt_date.loc[i[1]['name']] = [
+                strike, price, price_BA, money_option, bonus_rollback
+            ]
+        if direction == 2:
+            source_table_all_opt_date = ColumnDataSource(
+                df_table_all_opt_date.sort_values(by='Страйк')
+            )
+            # Обновление титла над таблицей CALL опционов выбранного БА
+            if len(df_table_all_opt_date.loc[:]) == 0:
+                title_selected_BA_CALL.text = (
+                    f'<blockquote><h2>CALL опционы не назначены!<hr>'
+                )
+            else:
+                title_selected_BA_CALL.text = (
+                    f'<blockquote><h2>CALL опционы "{name_BA}" на {date_Ex:.10}<hr>'
+                )
+        else:
+            source_table_all_opt_date = ColumnDataSource(
+                df_table_all_opt_date.sort_values(by='Страйк', ascending=False)
+            )
+            # Обновление титла над таблицей CALL опционов выбранного БА
+            if len(df_table_all_opt_date.loc[:]) == 0:
+                title_selected_BA_PUT.text = (
+                    f'<blockquote><h2>PUT опционы не назначены!<hr>'
+                )
+            else:
+                title_selected_BA_PUT.text = (
+                    f'<blockquote><h2>PUT опционы "{name_BA}" на {date_Ex:.10}<hr>'
+                )
+        columns_table_all_opt_date = [
+            TableColumn(field='index', title="Название",),
+            TableColumn(field='Страйк', title="Страйк"),
+            TableColumn(field='Премия', title="Премия"),
+            TableColumn(field='Цена БА', title="Цена БА"),
+            TableColumn(field='Опц. на деньгах', title="Опц. на деньгах"),
+            TableColumn(field='Откат премии', title="Откат премии"),
         ]
-    if direction == 2:
-        source_table_all_opt_date = ColumnDataSource(
-            df_table_all_opt_date.sort_values(by='Страйк')
-        )
-        # Обновление титла над таблицей CALL опционов выбранного БА
-        if len(df_table_all_opt_date.loc[:]) == 0:
-            title_selected_BA_CALL.text = (
-                f'<blockquote><h2>CALL опционы не назначены!<hr>'
-            )
-        else:
-            title_selected_BA_CALL.text = (
-                f'<blockquote><h2>CALL опционы "{name_BA}" на {date_Ex:.10}<hr>'
-            )
-    else:
-        source_table_all_opt_date = ColumnDataSource(
-            df_table_all_opt_date.sort_values(by='Страйк', ascending=False)
-        )
-        # Обновление титла над таблицей CALL опционов выбранного БА
-        if len(df_table_all_opt_date.loc[:]) == 0:
-            title_selected_BA_PUT.text = (
-                f'<blockquote><h2>PUT опционы не назначены!<hr>'
-            )
-        else:
-            title_selected_BA_PUT.text = (
-                f'<blockquote><h2>PUT опционы "{name_BA}" на {date_Ex:.10}<hr>'
-            )
-    columns_table_all_opt_date = [
-        TableColumn(field='index', title="Название",),
-        TableColumn(field='Страйк', title="Страйк"),
-        TableColumn(field='Премия', title="Премия"),
-        TableColumn(field='Цена БА', title="Цена БА"),
-        TableColumn(field='Опц. на деньгах', title="Опц. на деньгах"),
-        TableColumn(field='Откат премии', title="Откат премии"),
-    ]
-    return [source_table_all_opt_date, columns_table_all_opt_date]
+        return [source_table_all_opt_date, columns_table_all_opt_date]
+    except Exception as e:
+        print(f'Выбор даты без выбранного БА - исключение {e}')
+        return None
 # Обновление данных в таблицах выбранных опционов
 async def updateTableSelectedOPT(name_OPT, date_Ex):
     df_for_OPT_select = pd.DataFrame(columns=['Данные',])
@@ -205,12 +214,20 @@ async def updateTableSelectedOPT(name_OPT, date_Ex):
     if (direction == 2 and price != 'н/д'):
         df_for_OPT_select.loc['Стоимость БА для опциона "На деньгах"'] = [(strike + price)]
         df_for_OPT_select.loc['Окупаемость опциона(шорт позиция БА)'] = [(price_BA - price)]
+        # Обнуление графиков опционов выбранных
+        plot_PUTvsCALL.data_source = ColumnDataSource({})
+        plot_CALL.data_source = ColumnDataSource({})
     elif (direction == 1 and price != 'н/д'):
         df_for_OPT_select.loc['Стоимость БА для опциона "На деньгах"'] = [(strike - price)]
         df_for_OPT_select.loc['Окупаемость опциона(лонг позиция БА)'] = [(price_BA + price)]
+        plot_PUTvsCALL.data_source = ColumnDataSource({})
+        plot_PUT.data_source = ColumnDataSource({})
     else:
         df_for_OPT_select.loc['Стоимость БА для опциона "На деньгах"'] = ['н/д']
         df_for_OPT_select.loc['Стоимость БА для окупаемости премии'] = ['н/д']
+        plot_PUTvsCALL.data_source = ColumnDataSource({})
+        plot_PUT.data_source = ColumnDataSource({})
+        plot_CALL.data_source = ColumnDataSource({})
     df_for_OPT_select.loc['Лотность опциона'] = [i[1].lot]
     df_for_OPT_select.loc['Лотность БА'] = [lot_BA]
     df_for_OPT_select.loc['Количество БА в опционе'] = [ba_size]
@@ -220,7 +237,6 @@ async def updateTableSelectedOPT(name_OPT, date_Ex):
     else:
         df_for_OPT_select.loc['Стоимость премии опциона за лот'] = ['н/д']
     df_for_OPT_select.loc['Количество предложений(по стакану)'] = [quantity]
-    df_for_OPT_select.loc['Дата исполнения опциона'] = [i[1].expiration_date]
     source_OPT_select = ColumnDataSource(df_for_OPT_select)
     columns_OPT_select = [
         TableColumn(field='index', title="Свойство",),
@@ -297,6 +313,10 @@ async def coroutinSelectBA(name):
     # Активируем кнопку для построения графика БА и обнуляем данные этого графика
     plot_BA.data_source = ColumnDataSource({})
     btn_plotting_BA.disabled = False
+    # Обнуляем исторические графики опционов
+    plot_history_CALL.data_source = ColumnDataSource({})
+    plot_history_PUT.data_source = ColumnDataSource({})
+    plot_history_PUTvsCALL.data_source = ColumnDataSource({})
     # Обнуляем данные графиков опционов и деактивируем их кнопки
     plot_CALL.data_source = ColumnDataSource({})
     plot_PUT.data_source = ColumnDataSource({})
@@ -304,28 +324,34 @@ async def coroutinSelectBA(name):
     btn_plotting_PUT.disabled = True
     btn_plotting_CALL.disabled = True
     btn_plotting_PUTvsCALL.disabled = True
+    # Деактивируем кнопку сохранения выбраных опционов
+    btn_plotting_SAVE.disabled = True
 # Выбора даты испонения опциона
 async def coroutinDateOptEx(date_Ex):
     # Обновление таблицы CALL опционов выбранного БА на выбранную дату
     data_table_selected_BA_CALL = await updateTableAllOptDate(select_BA.value, date_Ex, 2)
-    table_selected_BA_CALL.source = data_table_selected_BA_CALL[0]
-    table_selected_BA_CALL.columns = data_table_selected_BA_CALL[1]
+    if data_table_selected_BA_CALL != None:
+        table_selected_BA_CALL.source = data_table_selected_BA_CALL[0]
+        table_selected_BA_CALL.columns = data_table_selected_BA_CALL[1]
     # Обновление таблицы PUT опционов выбранного БА на выбранную дату
     data_table_selected_BA_PUT = await updateTableAllOptDate(select_BA.value, date_Ex, 1)
-    table_selected_BA_PUT.source = data_table_selected_BA_PUT[0]
-    table_selected_BA_PUT.columns = data_table_selected_BA_PUT[1]
+    if data_table_selected_BA_PUT != None:
+        table_selected_BA_PUT.source = data_table_selected_BA_PUT[0]
+        table_selected_BA_PUT.columns = data_table_selected_BA_PUT[1]
     # Отключение в случае отсутствия опционов
     # И последующее добавление опционов в селекты выбора опционов
-    if len(table_selected_BA_CALL.source.data['index']) == 0:
-        select_CALL.disabled = True
-    else:
-        select_CALL.disabled = False
-        select_CALL.options = list(table_selected_BA_CALL.source.data['index'])
-    if len(table_selected_BA_PUT.source.data['index']) == 0:
-        select_PUT.disabled = True
-    else:
-        select_PUT.disabled = False
-        select_PUT.options = list(table_selected_BA_PUT.source.data['index'])
+    if table_selected_BA_CALL.source.data:
+        if len(table_selected_BA_CALL.source.data['index']) == 0:
+            select_CALL.disabled = True
+        else:
+            select_CALL.disabled = False
+            select_CALL.options = list(table_selected_BA_CALL.source.data['index'])
+    if table_selected_BA_PUT.source.data:
+        if len(table_selected_BA_PUT.source.data['index']) == 0:
+            select_PUT.disabled = True
+        else:
+            select_PUT.disabled = False
+            select_PUT.options = list(table_selected_BA_PUT.source.data['index'])
     # Обнуляем данные в таблице выбранных опционов
     table_CALL_select.source = ColumnDataSource(dict(nos = ['Список опционов обновлен!']))
     table_CALL_select.columns = [TableColumn(field='nos', title="a",)]
@@ -355,6 +381,7 @@ async def coroutinBtnPlottingBA():
     plot.title.text = source_plot_BA[1]
     # Деактивируем кнопку построения графика БА до выбора следующего БА
     btn_plotting_BA.disabled = True
+    # Построение исторических графиков опционов по БА
 # Кнопки построения графиков опционов
 async def coroutinBtnPlottingOPT(type_OPT):
     if type_OPT == 'CALL':
@@ -364,8 +391,8 @@ async def coroutinBtnPlottingOPT(type_OPT):
                 x = [
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
-                    table_CALL_select.source.data['Данные'][10],
-                    table_CALL_select.source.data['Данные'][10],
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                 ],
                 y = [
@@ -382,6 +409,8 @@ async def coroutinBtnPlottingOPT(type_OPT):
             )
         )
         plot.line(source=ColumnDataSource())
+        # Активация кнопки сохранения выбранных опционов
+        btn_plotting_SAVE.disabled = False
     elif type_OPT == 'PUT':
         plot_PUTvsCALL.data_source = ColumnDataSource({})
         plot_PUT.data_source = ColumnDataSource(
@@ -389,8 +418,8 @@ async def coroutinBtnPlottingOPT(type_OPT):
                 x = [
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
-                    table_PUT_select.source.data['Данные'][10],
-                    table_PUT_select.source.data['Данные'][10],
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                 ],
                 y = [
@@ -407,6 +436,8 @@ async def coroutinBtnPlottingOPT(type_OPT):
             )
         )
         plot.line(source=ColumnDataSource())
+        # Активация кнопки сохранения выбранных опционов
+        btn_plotting_SAVE.disabled = False
     elif type_OPT == 'PUTvsCALL':
         volic = (f'{select_PUT.value} vs {select_CALL.value}')
         plot_PUT.data_source = ColumnDataSource({})
@@ -416,8 +447,8 @@ async def coroutinBtnPlottingOPT(type_OPT):
                 x = [
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
-                    table_CALL_select.source.data['Данные'][10],
-                    table_CALL_select.source.data['Данные'][10],
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
+                    pd.to_datetime(date_OPT_ex.value, utc=True),
                     plot_BA.data_source.data['x'][len(plot_BA.data_source.data['x']) - 1],
                 ],
                 y = [
@@ -554,6 +585,12 @@ plot_CALL = plot.line(color='green', alpha=0.8, width=2)
 plot_PUT = plot.line(color='red', alpha=0.8, width=2)
 # Экземпляр графика PUTvsCALL опциона
 plot_PUTvsCALL = plot.line(color='blue', alpha=0.8, width=2)
+# Экземпляр исторического графика CALL опциона
+plot_history_CALL = plot.line(color='green', alpha=0.5, width=2)
+# Экземпляр исторического графика PUT опциона
+plot_history_PUT = plot.line(color='red', alpha=0.5, width=2)
+# Экземпляр исторического графика PUTvsCALL опциона
+plot_history_PUTvsCALL = plot.line(color='blue', alpha=0.5, width=2)
 
 # Коллбэки****************************************************************************************
 # Селекта выбора БА
@@ -601,7 +638,37 @@ def callbackBtnPlottingPUT():
 # Кнопки построения графика PUTvsCALL опционов
 def callbackBtnPlottingPUTvsCALL():
     doc.add_next_tick_callback(partial(coroutinBtnPlottingOPT, type_OPT = 'PUTvsCALL'))
-
+# Кнопки сохранения выбранных опционов
+def callbackBtnPlottingSAVE():
+    # Проверяем есть ли данные в suorce опционов и записываем их
+    if not plot_CALL.data_source.data:
+        pass
+    else:
+        df_history_opt.loc[select_CALL.value] = [
+            select_CALL.value,select_BA.value, 'CALL', plot_CALL.data_source.data['x'][0],
+            plot_CALL.data_source.data['x'][2],
+            plot_CALL.data_source.data['y'][0], plot_CALL.data_source.data['y'][1]
+        ]
+        df_history_opt.to_csv('history_OPT', index=False)
+    if not plot_PUT.data_source.data:
+        pass
+    else:
+        df_history_opt.loc[select_PUT.value] = [
+            select_PUT.value,select_BA.value, 'PUT', plot_PUT.data_source.data['x'][0],
+            plot_PUT.data_source.data['x'][2],
+            plot_PUT.data_source.data['y'][0], plot_PUT.data_source.data['y'][1]
+        ]
+        df_history_opt.to_csv('history_OPT', index=False)
+    if not plot_PUTvsCALL.data_source.data:
+        pass
+    else:
+        df_history_opt.loc[(f'{select_PUT.value}vs{select_CALL.value}')] = [
+            (f'{select_PUT.value}vs{select_CALL.value}'), select_BA.value, 'PUTvsCALL',
+            plot_PUTvsCALL.data_source.data['x'][0], plot_PUTvsCALL.data_source.data['x'][2],
+            plot_PUTvsCALL.data_source.data['y'][0], plot_PUTvsCALL.data_source.data['y'][1]
+        ]
+        df_history_opt.to_csv('history_OPT', index=False)
+ 
 # Обработчики событий**************************************************************************
 # Селекта выбора БА
 select_BA.on_change("value", callbackSelectBA)
@@ -619,6 +686,8 @@ btn_plotting_CALL.on_click(callbackBtnPlottingCALL)
 btn_plotting_PUT.on_click(callbackBtnPlottingPUT)
 # Кнопка построения графика PUTvsCALL опционов
 btn_plotting_PUTvsCALL.on_click(callbackBtnPlottingPUTvsCALL)
+# Кнопка сохранения выбранных опционов
+btn_plotting_SAVE.on_click(callbackBtnPlottingSAVE)
 
 # Собираем виджеты в корневище*************************************************************
 layout = column(
