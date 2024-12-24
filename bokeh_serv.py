@@ -382,6 +382,32 @@ async def coroutinBtnPlottingBA():
     # Деактивируем кнопку построения графика БА до выбора следующего БА
     btn_plotting_BA.disabled = True
     # Построение исторических графиков опционов по БА
+    if source_plot_BA[1] in list(df_history_opt['name_BA']):
+        x_vol = []
+        y_vol = []
+        v_vol = []
+        for c in (
+            df_history_opt[df_history_opt.name_BA == source_plot_BA[1]].sort_values(by='x1')
+        ).iterrows():
+            if c[1].strateg == 'CALL':
+                x_vol.append(pd.to_datetime(c[1].x1, utc=True))
+                x_vol.append(pd.to_datetime(c[1].x1, utc=True))
+                x_vol.append(pd.to_datetime(c[1].x2, utc=True))
+                x_vol.append(pd.to_datetime(c[1].x2, utc=True))
+                x_vol.append(pd.to_datetime(c[1].x1, utc=True))   
+                y_vol.append(c[1].y1)
+                y_vol.append(c[1].y2)
+                y_vol.append(c[1].y2)
+                y_vol.append(c[1].y1)
+                y_vol.append(c[1].y1)
+                v_vol.append(c[1].name_OPT)
+                v_vol.append(c[1].name_OPT)
+                v_vol.append(c[1].name_OPT)
+                v_vol.append(c[1].name_OPT)
+                v_vol.append(c[1].name_OPT)
+        if len(x_vol) != 0:    
+            plot_history_CALL.data_source = ColumnDataSource(dict(x = x_vol, y = y_vol, volume = v_vol))
+            plot.line(source=ColumnDataSource())
 # Кнопки построения графиков опционов
 async def coroutinBtnPlottingOPT(type_OPT):
     if type_OPT == 'CALL':
