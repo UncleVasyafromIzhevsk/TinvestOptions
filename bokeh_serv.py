@@ -383,30 +383,90 @@ async def coroutinBtnPlottingBA():
     btn_plotting_BA.disabled = True
     # Построение исторических графиков опционов по БА
     if source_plot_BA[1] in list(df_history_opt['name_BA']):
-        x_vol = []
-        y_vol = []
-        v_vol = []
-        for c in (
+        x_vol_CALL = []
+        x_vol_PUT = []
+        x_vol_PUTvsCALL  = []
+        y_vol_CALL = []
+        y_vol_PUT = []
+        y_vol_PUTvsCALL = []
+        v_vol_CALL =[]
+        v_vol_PUT = []
+        v_vol_PUTvsCALL = []
+        for opt in (
             df_history_opt[df_history_opt.name_BA == source_plot_BA[1]].sort_values(by='x1')
         ).iterrows():
-            if c[1].strateg == 'CALL':
-                x_vol.append(pd.to_datetime(c[1].x1, utc=True))
-                x_vol.append(pd.to_datetime(c[1].x1, utc=True))
-                x_vol.append(pd.to_datetime(c[1].x2, utc=True))
-                x_vol.append(pd.to_datetime(c[1].x2, utc=True))
-                x_vol.append(pd.to_datetime(c[1].x1, utc=True))   
-                y_vol.append(c[1].y1)
-                y_vol.append(c[1].y2)
-                y_vol.append(c[1].y2)
-                y_vol.append(c[1].y1)
-                y_vol.append(c[1].y1)
-                v_vol.append(c[1].name_OPT)
-                v_vol.append(c[1].name_OPT)
-                v_vol.append(c[1].name_OPT)
-                v_vol.append(c[1].name_OPT)
-                v_vol.append(c[1].name_OPT)
-        if len(x_vol) != 0:    
-            plot_history_CALL.data_source = ColumnDataSource(dict(x = x_vol, y = y_vol, volume = v_vol))
+            if pd.to_datetime(opt[1].x2, utc=True) > plot_BA.data_source.data['x'][0]:
+                if opt[1].strateg == 'CALL':
+                    x_vol_CALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_CALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_CALL.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_CALL.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_CALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_CALL.append('nan') 
+                    y_vol_CALL.append(opt[1].y1)
+                    y_vol_CALL.append(opt[1].y2)
+                    y_vol_CALL.append(opt[1].y2)
+                    y_vol_CALL.append(opt[1].y1)
+                    y_vol_CALL.append(opt[1].y1)
+                    y_vol_CALL.append('nan')
+                    v_vol_CALL.append(opt[1].name_OPT)
+                    v_vol_CALL.append(opt[1].name_OPT)
+                    v_vol_CALL.append(opt[1].name_OPT)
+                    v_vol_CALL.append(opt[1].name_OPT)
+                    v_vol_CALL.append(opt[1].name_OPT)
+                    v_vol_CALL.append('nan')
+                elif opt[1].strateg == 'PUT':
+                    x_vol_PUT.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUT.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUT.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_PUT.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_PUT.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUT.append('nan') 
+                    y_vol_PUT.append(opt[1].y1)
+                    y_vol_PUT.append(opt[1].y2)
+                    y_vol_PUT.append(opt[1].y2)
+                    y_vol_PUT.append(opt[1].y1)
+                    y_vol_PUT.append(opt[1].y1)
+                    y_vol_PUT.append('nan')
+                    v_vol_PUT.append(opt[1].name_OPT)
+                    v_vol_PUT.append(opt[1].name_OPT)
+                    v_vol_PUT.append(opt[1].name_OPT)
+                    v_vol_PUT.append(opt[1].name_OPT)
+                    v_vol_PUT.append(opt[1].name_OPT)
+                    v_vol_PUT.append('nan')
+                elif opt[1].strateg == 'PUTvsCALL':
+                    x_vol_PUTvsCALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUTvsCALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUTvsCALL.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_PUTvsCALL.append(pd.to_datetime(opt[1].x2, utc=True))
+                    x_vol_PUTvsCALL.append(pd.to_datetime(opt[1].x1, utc=True))
+                    x_vol_PUTvsCALL.append('nan') 
+                    y_vol_PUTvsCALL.append(opt[1].y1)
+                    y_vol_PUTvsCALL.append(opt[1].y2)
+                    y_vol_PUTvsCALL.append(opt[1].y2)
+                    y_vol_PUTvsCALL.append(opt[1].y1)
+                    y_vol_PUTvsCALL.append(opt[1].y1)
+                    y_vol_PUTvsCALL.append('nan')
+                    v_vol_PUTvsCALL.append(opt[1].name_OPT)
+                    v_vol_PUTvsCALL.append(opt[1].name_OPT)
+                    v_vol_PUTvsCALL.append(opt[1].name_OPT)
+                    v_vol_PUTvsCALL.append(opt[1].name_OPT)
+                    v_vol_PUTvsCALL.append(opt[1].name_OPT)
+                    v_vol_PUTvsCALL.append('nan')
+        if len(x_vol_CALL) != 0:    
+            plot_history_CALL.data_source = ColumnDataSource(
+                dict(x = x_vol_CALL, y = y_vol_CALL, volume = v_vol_CALL)
+            )
+            plot.line(source=ColumnDataSource())
+        if len(x_vol_PUT) != 0:    
+            plot_history_PUT.data_source = ColumnDataSource(
+                dict(x = x_vol_PUT, y = y_vol_PUT, volume = v_vol_PUT)
+            )
+            plot.line(source=ColumnDataSource())
+        if len(x_vol_PUTvsCALL) != 0:    
+            plot_history_PUTvsCALL.data_source = ColumnDataSource(
+                dict(x = x_vol_PUTvsCALL, y = y_vol_PUTvsCALL, volume = v_vol_PUTvsCALL)
+            )
             plot.line(source=ColumnDataSource())
 # Кнопки построения графиков опционов
 async def coroutinBtnPlottingOPT(type_OPT):
