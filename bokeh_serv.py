@@ -392,9 +392,7 @@ async def coroutinBtnPlottingBA():
         v_vol_CALL =[]
         v_vol_PUT = []
         v_vol_PUTvsCALL = []
-        for opt in (
-            df_history_opt[df_history_opt.name_BA == source_plot_BA[1]].sort_values(by='x1')
-        ).iterrows():
+        for opt in df_history_opt[df_history_opt.name_BA == source_plot_BA[1]].iterrows():
             if pd.to_datetime(opt[1].x2, utc=True) > plot_BA.data_source.data['x'][0]:
                 if opt[1].strateg == 'CALL':
                     x_vol_CALL.append(pd.to_datetime(opt[1].x1, utc=True))
