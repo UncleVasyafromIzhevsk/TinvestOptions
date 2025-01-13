@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from bokeh.io import show, curdoc
 from bokeh.models import (
 AutocompleteInput, Select, ColumnDataSource, DataTable, DateFormatter, TableColumn,
-Div, DatePicker, HoverTool, Button
+Div, DatePicker, HoverTool, Button, NumericInput
 )
 from bokeh.events import ButtonClick
 from bokeh.layouts import column, row
@@ -34,6 +34,10 @@ df_all_share_curr = pd.DataFrame()
 print('Запись истории опционов в темп')
 df_history_opt = pd.read_csv('history_OPT')
 df_history_opt.to_csv('history_OPT_temp', index=False)
+print('Ок!')
+print('Запись открытых позиций в темп')
+df_open_positions_temp = pd.read_csv('open_positions')
+df_open_positions_temp.to_csv('open_positions_temp', index=False)
 print('Ок!')
 
 async def updateBD():
@@ -252,6 +256,8 @@ async def updateTableSelectedOPT(name_OPT, date_Ex):
                     btn_plotting_PUTvsCALL.disabled = False              
             elif direction == 1:
                 btn_plotting_PUT.disabled = False
+                # Активация выбора количества лотов в окрываемую позицию
+                input_num_lots.disabled = False
                 # Активация кнопки PUTvsCALL
                 if not btn_plotting_CALL.disabled:
                     btn_plotting_PUTvsCALL.disabled = False        
@@ -275,6 +281,141 @@ async def updatePlottingBA():
     # Название для графика
     name_plot = table_selected_BA.source.data['Название'][0]
     return [source_plot_BA, name_plot]
+# Обновление данных в таблице позиций
+async def updateTableOpenPositions():
+    print(pd.to_datetime('today', utc=True))
+    # Читаем данные по позициям
+    df_open_positions = pd.read_csv('open_positions')
+    # фрейм для временых даных сурсы
+    df_open_positions_temp = pd.DataFrame(
+        columns=[
+            'base_asset', 'option', 'price_BA_first', 'price_option_in_money',
+            'price_hedge_in_money','price_hedge_out_money', 'date_EX', 'status_pos', 
+            'base_asset_figi','base_asset_uid', 'quantity_BA', 'price_BA_current', 
+            'price_option_payback', 'price_dynamics', 'status_opt'
+        ]
+    )
+    # фрейм для перезаписи
+    df_open_positions_temp1 = pd.DataFrame(
+        columns=[
+            'base_asset', 'option', 'price_BA_first', 'price_option_in_money', 'price_hedge_in_money',
+            'price_hedge_out_money', 'date_EX', 'status_pos', 'base_asset_figi',
+            'base_asset_uid', 'quantity_BA', 'status_opt'
+        ]
+    )
+    # Флаг для записи данных по позициям при изменениии их статуса
+    flag_recording_positions = False
+    for pos in df_open_positions.iterrows():
+        # Проверяем статус позиции на действующую
+        if pos[1].status_pos == 1:
+            price_BA_current = 'н/д'
+            price_option_payback = 'н/д'
+            price_dynamics = 'н/д'
+            price_date_ex = 'н/д'
+            # Текущая цена на БА
+            price_tin = await tin.tinGetLastPrice(
+                figi=pos[1].base_asset_figi, instrument_id=pos[1].base_asset_uid
+            )
+            if price_tin != None:
+                price_BA_current = tin.tinNumberConnector(
+                    price_tin[0].price.units, price_tin[0].price.nano
+                )
+            # Определяем хедж
+            # Если опцион EX! и статус опциона исполнен - 1
+            if (
+                (pd.to_datetime(pos[1].date_EX, utc=True) < pd.to_datetime('today', utc=True))
+                & (pos[1].status_opt == 1)
+            ):
+                # То цена хеджа как для опциона в деньгах
+                price_option_payback = pos[1].price_hedge_in_money
+            # Если опцион EX!, а статус опциона не достиг даты EX - 2
+            elif (
+                (pd.to_datetime(pos[1].date_EX, utc=True) < pd.to_datetime('today', utc=True))
+                & (pos[1].status_opt == 2)
+            ):
+                # Запрос цены на дату исполнения опциона
+                price_date_ex_tin = await tin.tinGetHistoryCandles(
+                    ((pd.to_datetime('today', utc=True)
+                      - pd.to_datetime(pos[1].date_EX, utc=True)).days * 24),
+                    figi=pos[1].base_asset_figi, instrument_id=pos[1].base_asset_uid,
+                    slot='1_DAY',
+                )
+                if price_date_ex_tin != None:
+                    price_date_ex = tin.tinNumberConnector(
+                        price_tin[0].price.units, price_tin[0].price.nano
+                    )
+                    # Если цена на момент EX ниже опциона в деньгах
+                    if price_date_ex < pos[1].price_option_in_money:
+                        # То цена хеджа как для опциона в деньгах
+                        price_option_payback = pos[1].price_hedge_in_money
+                        # Меняем статус опциона на исполнен
+                        pos[1].status_opt = 1
+                        # Открываем флаг для записи
+                        flag_recording_positions = True
+                    # Если нет
+                    else:
+                        # То цена хеджа как для опциона вне денег
+                        price_option_payback = pos[1].price_hedge_out_money
+                        # Меняем статус опциона на не исполнен
+                        pos[1].status_opt = 0
+                        # Открываем флаг для записи
+                        flag_recording_positions = True
+            # Для всех других случаев вне денег
+            else:
+                # При остальных раскладах как вне денег
+                price_option_payback = pos[1].price_hedge_out_money
+            # Динамика цены будет определяться только при численных значениях
+            try:
+                price_dynamics_temp = (
+                    (price_BA_current / price_option_payback) * 100
+                ) - 100
+                if price_dynamics_temp < 0:
+                    price_dynamics = f'{price_dynamics_temp:.2F} %'
+                elif price_dynamics_temp > 0:
+                    price_dynamics = f'+{price_dynamics_temp:.2F} %'
+                else:
+                    price_dynamics = price_dynamics_temp
+            except:
+                pass
+            # Запись в фрейм для коллоны
+            df_open_positions_temp.loc[pos[1].option] = [
+                pos[1].base_asset, pos[1].option, pos[1].price_BA_first,
+                pos[1].price_option_in_money,
+                pos[1].price_hedge_in_money, pos[1].price_hedge_out_money,
+                pos[1].date_EX, pos[1].status_pos, pos[1].base_asset_figi, pos[1].base_asset_uid,
+                pos[1].quantity_BA, price_BA_current, price_option_payback, price_dynamics,
+                pos[1].status_opt,
+            ]
+            # Запись в фрейм для перезаписи
+            df_open_positions_temp1.loc[pos[1].option] = [
+                pos[1].base_asset, pos[1].option, pos[1].price_BA_first,
+                pos[1].price_option_in_money,
+                pos[1].price_hedge_in_money, pos[1].price_hedge_out_money,
+                pos[1].date_EX, pos[1].status_pos, pos[1].base_asset_figi, pos[1].base_asset_uid,
+                pos[1].quantity_BA, pos[1].status_opt,
+            ]
+    # Если открыт флаг для перезаписи статусов - перезапись
+    if flag_recording_positions:
+        df_open_positions = df_open_positions_temp1
+        df_open_positions.to_csv('open_positions', index=False)
+    # Высота таблицы
+    height_table_open_positions = (len(df_open_positions_temp.index) * 25) + 25
+    # Запись в сурсу
+    source_table_open_positions = ColumnDataSource(df_open_positions_temp)
+    # Запись в колону
+    columns_table_open_positions = [
+        TableColumn(field="base_asset", title="Базовый Актив"),
+        TableColumn(field="option", title="Опцион"),
+        TableColumn(field="price_BA_first", title="Цена покупки"),
+        TableColumn(field="price_BA_current", title="Текущая цена"),
+        TableColumn(field="price_option_payback", title="Хедж"),
+        TableColumn(field="price_dynamics", title="Динамика"),
+        TableColumn(field="quantity_BA", title="Мера БА(лотов)")
+    ]
+    return [
+        source_table_open_positions, columns_table_open_positions,
+        height_table_open_positions
+    ]
 
 # Корутины для вызова***************************************************************************
 # Селекта выбора БА
@@ -546,6 +687,75 @@ async def coroutinBtnPlottingOPT(type_OPT):
                  )
         )
         plot.line(source=ColumnDataSource())
+# Обновление данных в таблице позиций
+async def coroutinTableOpenPositions():
+    data_table_open_positions = await updateTableOpenPositions()
+    table_open_positions.source = data_table_open_positions[0]
+    table_open_positions.columns = data_table_open_positions[1]
+    table_open_positions.height = data_table_open_positions[2]
+    # Обновление индексов в селекте выбора позиции на удаление
+    select_close_position.options = list(table_open_positions.source.data['index'])
+# Кнопка добавления позиции
+async def coroutinBtnAddPosition():
+    # Получаем данные по позициям
+    df_open_positions = pd.read_csv('open_positions')
+    # Выбрать данные для записи из виджетов
+    # Название БА
+    base_asset = table_selected_BA.source.data['Название'][0]
+    # Название опциона
+    option = select_PUT.value
+    # Цена БА на момент записи позиции(цена покупки)
+    price_BA_first = table_PUT_select.source.data['Данные'][1]
+    # Цена БА для опциона в деньгах
+    price_option_in_money = table_PUT_select.source.data['Данные'][2]
+    # Хедж прицене опциона в деньгах: цена БА равна цене покупки + двойная комиссия
+    # 0.3 % * 2 за БА + комиссия за опцион(если боьше 0.5 руб то 1.5%) + плюс 13 % НДС
+    if (table_PUT_select.source.data['Данные'][0] / 100) * 1.5 < 0.5:
+        option_fee = 0.5
+    else:
+        option_fee = (table_PUT_select.source.data['Данные'][0] / 100) * 1.5
+    vat_tax_1 = (option_fee / 100) * 13
+    double_commission_1 = ((table_PUT_select.source.data['Данные'][1] + option_fee + vat_tax_1) / 100) * 0.6
+    price_hedge_in_money = (
+        table_PUT_select.source.data['Данные'][1] + option_fee + vat_tax_1 + double_commission_1)
+    # Хедж при цене опциона вне денег: цена БА равна цене покупки + двойная комиссия
+    # 0.3 % * 2 за БА + комиссия за опцион(если боьше 0.5 руб то 1.5%) + плюс 13 % НДС
+    # + премия опциона
+    vat_tax_0 = (option_fee + table_PUT_select.source.data['Данные'][0]/ 100) * 13
+    double_commission_0 = (
+        (table_PUT_select.source.data['Данные'][1] + option_fee + vat_tax_0 + table_PUT_select.source.data['Данные'][0]) / 100) * 0.6
+    price_hedge_out_money = (
+        table_PUT_select.source.data['Данные'][1] + option_fee + vat_tax_1 + double_commission_1 + table_PUT_select.source.data['Данные'][0])
+    date_EX = pd.to_datetime(date_OPT_ex.value, utc=True)
+    status_pos =1
+    base_asset_figi = table_selected_BA.source.data['figi'][0]
+    base_asset_uid = table_selected_BA.source.data['uid'][0]
+    quantity_BA = input_num_lots.value
+    status_opt = 2
+    # Вносим новые данные по позициям
+    df_open_positions.loc[option] = [
+        base_asset, option, price_BA_first, price_option_in_money, price_hedge_in_money,
+        price_hedge_out_money, date_EX, status_pos, base_asset_figi, base_asset_uid,
+        quantity_BA, status_opt
+    ]
+    # Записываем новые данные по позициям
+    df_open_positions.to_csv('open_positions', index=False)
+    # Деактивация кнопки записи позиции
+    btn_add_position.disabled = True
+# Кнопка закрытия позиции
+async def coroutinBtnClosePosition():
+    # Если селекта выбора на удаление не пуста
+    if len(select_close_position.options) != 0 and select_close_position.value != '':
+        # Получаем данные по позициям
+        df_open_positions = pd.read_csv('open_positions')
+        # Находим позицию по опциону и статус её позиции переводим в 0
+        index_pos = df_open_positions[
+        df_open_positions.option == select_close_position.value
+        ].index
+        # Здесь панды предупреждают что в 3 версии что-то будет
+        df_open_positions.status_pos[index_pos] = 0
+        # Записываем новые данные по позициям
+        df_open_positions.to_csv('open_positions', index=False)
 
 # Виджеты****************************************************************************************
 # Название таблицы с опционами по которым есть опционы
@@ -675,6 +885,30 @@ plot_history_CALL = plot.line(color='green', alpha=0.5, width=2)
 plot_history_PUT = plot.line(color='red', alpha=0.5, width=2)
 # Экземпляр исторического графика PUTvsCALL опциона
 plot_history_PUTvsCALL = plot.line(color='blue', alpha=0.5, width=2)
+# Название таблицы с открытыми позициями
+title_table_open_positions = Div(
+    text=(
+        '<blockquote><h2>Таблица открытых позиций<hr>'
+    ), sizing_mode='stretch_width', margin = (3, 0, 3, 0)
+)
+# Ввод количества лотов БА в открываемую позицию
+input_num_lots = NumericInput(low=1, high=100, disabled=True)
+# Кнопка добавления позиции
+btn_add_position = Button(
+    label='Добавить позицию', sizing_mode='stretch_width', disabled=True,
+    button_type = 'danger',
+)
+# Таблица с открытыми позициями
+table_open_positions = DataTable(
+    index_header='№', index_width=25, sizing_mode='stretch_width', height=0
+)
+# Селекта выбора позиции для закрытия
+select_close_position = Select(sizing_mode='stretch_width')
+# Кнопка закрытия позиции
+btn_close_position = Button(
+    label='Закрыть позицию', sizing_mode='stretch_width', disabled=False,
+    button_type = 'success',
+)
 
 # Коллбэки****************************************************************************************
 # Селекта выбора БА
@@ -752,6 +986,23 @@ def callbackBtnPlottingSAVE():
             plot_PUTvsCALL.data_source.data['y'][0], plot_PUTvsCALL.data_source.data['y'][1]
         ]
         df_history_opt.to_csv('history_OPT', index=False)
+# Ввод количества лотов БА в открываемую позицию
+def callbackInputNumLots(attr, old, new):
+    # Активация кнопки записи позиции
+    if input_num_lots.value > 0 and input_num_lots.value < 101:
+        btn_add_position.disabled = False
+# Кнопка добавления позиции
+def callbackBtnAddPosition():
+    # Записываем новые данные по позициям
+    doc.add_next_tick_callback(partial(coroutinBtnAddPosition))
+    # Обновляем таблицу открытых позиций
+    doc.add_next_tick_callback(partial(coroutinTableOpenPositions))
+# Кнопка закрытия позиции
+def callbackBtnClosePosition():
+    # Статус позиции выставляем в 0 - недействующий
+    doc.add_next_tick_callback(partial(coroutinBtnClosePosition))
+    # Обновляем таблицу открытых позиций
+    doc.add_next_tick_callback(partial(coroutinTableOpenPositions))
  
 # Обработчики событий**************************************************************************
 # Селекта выбора БА
@@ -772,6 +1023,13 @@ btn_plotting_PUT.on_click(callbackBtnPlottingPUT)
 btn_plotting_PUTvsCALL.on_click(callbackBtnPlottingPUTvsCALL)
 # Кнопка сохранения выбранных опционов
 btn_plotting_SAVE.on_click(callbackBtnPlottingSAVE)
+# Ввод количества лотов БА в открываемую позицию
+input_num_lots.on_change('value', callbackInputNumLots)
+# Кнопка добавления позиции
+btn_add_position.on_event(ButtonClick, callbackBtnAddPosition)
+# Селекта выбора позиции для закрытия
+# Кнопка закрытия позиции
+btn_close_position.on_event(ButtonClick, callbackBtnClosePosition)
 
 # Собираем виджеты в корневище*************************************************************
 layout = column(
@@ -785,11 +1043,16 @@ layout = column(
         btn_plotting_BA, btn_plotting_CALL, btn_plotting_PUT,
         btn_plotting_PUTvsCALL, btn_plotting_SAVE, sizing_mode="stretch_width"
     ),
-    plot,
+    plot, title_table_open_positions,
+    row(input_num_lots, btn_add_position, sizing_mode='stretch_width'),
+    table_open_positions,
+    row(select_close_position, btn_close_position, sizing_mode='stretch_width'),
     sizing_mode='stretch_width'
 )
 
 # Запустим один раз для подключени таблиц
 doc.add_next_tick_callback(partial(updateBD))
+# Добавление периодика для обнавления таблицы с открытыми позициями
+doc.add_periodic_callback(coroutinTableOpenPositions, 10000)
 
 doc.add_root(layout)
